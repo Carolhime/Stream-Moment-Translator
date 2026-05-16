@@ -689,13 +689,8 @@ class SMTEngine:
 class SMTBetaUI:
     def __init__(self, engine: SMTEngine):
         self.engine = engine
-        self.root = tk.Tk()
-        self.root.title("SMT Beta — 完整版同声传译引擎")
-        self.root.geometry("1100x750")
-        self.root.minsize(800, 600)
-        self.root.configure(bg="#0f172a")
-        self._mini_mode = False
-        self._saved_geo = ""
+        self._subtitle_on = True
+        self._subtitle_win = None
 
         # ── 样式 ──
         self.colors = {
@@ -706,7 +701,16 @@ class SMTBetaUI:
         }
         c = self.colors
 
-        # ── 控制面板框架 ──
+        # ═══════════════════════════════════════════════════════
+        # 主窗口（控制面板）
+        # ═══════════════════════════════════════════════════════
+        self.root = tk.Tk()
+        self.root.title("SMT Beta — 控制面板")
+        self.root.geometry("900x680")
+        self.root.minsize(700, 500)
+        self.root.configure(bg=c["bg_dark"])
+
+        # ── 控制面板 ──
         ctrl_frame = tk.Frame(self.root, bg=c["bg_panel"])
         ctrl_frame.pack(fill="x", padx=8, pady=(8, 0))
 
@@ -729,7 +733,7 @@ class SMTBetaUI:
                                activebackground="#475569", activeforeground=c["text_main"])
         browse_btn.pack(side="left", padx=(8, 0))
 
-        # Row 1: 起播时间 / 跳过区间 / 仅译区间
+        # Row 1: 起播 / 跳过 / 仅译
         time_frame = tk.Frame(ctrl_frame, bg=c["bg_panel"])
         time_frame.pack(fill="x", pady=(0, 6))
         for label, var_name in [("起播:", "start_time"), ("跳过:", "skip_times"), ("仅译:", "target_times")]:
@@ -758,7 +762,6 @@ class SMTBetaUI:
                                   bg=c["red"], fg="white", font=("Microsoft YaHei", 10, "bold"),
                                   relief="flat", padx=16, pady=4, cursor="hand2",
                                   activebackground="#b91c1c", activeforeground="white")
-        # 初始隐藏停止按钮
 
         self.btn_pause = tk.Button(btn_frame, text="⏸ 暂停", command=self._pause,
                                    bg=c["yellow"], fg="white", font=("Microsoft YaHei", 10, "bold"),
@@ -770,11 +773,11 @@ class SMTBetaUI:
                                     relief="flat", padx=16, pady=4, cursor="hand2",
                                     activebackground="#15803d", activeforeground="white")
 
-        self.btn_mini = tk.Button(btn_frame, text="📋 迷你", command=self._toggle_mini,
-                                  bg="#334155", fg=c["text_main"], font=("Microsoft YaHei", 9),
-                                  relief="flat", padx=10, pady=3, cursor="hand2",
-                                  activebackground="#475569", activeforeground=c["text_main"])
-        self.btn_mini.pack(side="right", padx=(6, 0))
+        self.btn_subtitle = tk.Button(btn_frame, text="💬 字幕: 开", command=self._toggle_subtitle,
+                                      bg=c["accent_deep"], fg="white", font=("Microsoft YaHei", 9),
+                                      relief="flat", padx=10, pady=3, cursor="hand2",
+                                      activebackground="#0369a1", activeforeground="white")
+        self.btn_subtitle.pack(side="right", padx=(6, 0))
 
         clear_btn = tk.Button(btn_frame, text="清屏", command=self._clear_output,
                               bg="#334155", fg=c["text_main"], font=("Microsoft YaHei", 9),
@@ -802,11 +805,8 @@ class SMTBetaUI:
                                  relief="flat", wrap="word",
                                  padx=8, pady=6, undo=True,
                                  highlightthickness=1, highlightbackground=c["border"])
-        self.dict_scroll = tk.Scrollbar(dict_container, orient="vertical", command=self.dict_text.yview)
-        self.dict_text.configure(yscrollcommand=self.dict_scroll.set)
         self.dict_text.pack(side="left", fill="x", expand=True)
 
-        # 预填 stream_context（来自 config.json）
         if engine.stream_context:
             self.dict_text.insert("1.0", f"主题：{engine.stream_context}\n")
         self.dict_text.insert("end",
@@ -816,10 +816,10 @@ class SMTBetaUI:
             "#   可直接写 原文 = 译文, 也可以用 原文->译文 或 原文是译文\n"
         )
 
-        # ── 翻译输出面板 ──
+        # ── 翻译记录面板（紧凑） ──
         out_header = tk.Frame(self.root, bg=c["bg_dark"])
         out_header.pack(fill="x", padx=8)
-        tk.Label(out_header, text="翻译输出", fg=c["accent"], bg=c["bg_dark"],
+        tk.Label(out_header, text="翻译记录", fg=c["accent"], bg=c["bg_dark"],
                  font=("Microsoft YaHei", 10, "bold")).pack(side="left")
 
         out_container = tk.Frame(self.root, bg=c["border"])
@@ -835,13 +835,11 @@ class SMTBetaUI:
         self.out_scroll.pack(side="right", fill="y")
         self.out_text.pack(side="left", fill="both", expand=True)
 
-        # 文本标签样式
         self.out_text.tag_configure("ts", foreground=c["text_dim"], font=("Consolas", 9))
         self.out_text.tag_configure("src", foreground=c["text_muted"], font=("Microsoft YaHei", 10))
         self.out_text.tag_configure("tgt", foreground=c["text_main"], font=("Microsoft YaHei", 11, "bold"))
         self.out_text.tag_configure("log", foreground="#475569", font=("Microsoft YaHei", 9))
-        self.out_text.tag_configure("separator", foreground=c["border"],
-                                    font=("Consolas", 4))
+        self.out_text.tag_configure("separator", foreground=c["border"], font=("Consolas", 4))
 
         # ── 状态栏 ──
         self.status_var = tk.StringVar(value="🟡 等待 Whisper 模型加载...")
@@ -850,16 +848,115 @@ class SMTBetaUI:
         tk.Label(status_bar, textvariable=self.status_var, fg=c["text_muted"], bg=c["bg_panel"],
                  font=("Microsoft YaHei", 9)).pack(side="left")
 
-        # ── 窗口关闭事件 ──
+        # ── 字幕悬浮窗 ──
+        self._create_subtitle_overlay()
+
+        # ── 事件绑定 ──
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-
-        # ── 启动消息轮询 ──
         self._poll_messages()
-
-        # ── 初始按钮状态 ──
         self._update_buttons("idle")
 
-    # ── UI 操作 ──
+    # ═══════════════════════════════════════════════════════
+    # 字幕悬浮窗
+    # ═══════════════════════════════════════════════════════
+    def _create_subtitle_overlay(self):
+        win = tk.Toplevel(self.root)
+        win.overrideredirect(True)
+        win.attributes("-topmost", True)
+        win.attributes("-alpha", 0.88)
+        win.configure(bg="#000000")
+        # 窗口透明色（Windows 下配合 bg 实现伪透明）
+        try:
+            win.wm_attributes("-transparentcolor", "#000000")
+        except Exception:
+            pass
+
+        c = self.colors
+
+        # 内容容器
+        container = tk.Frame(win, bg=c["bg_panel"])
+        container.pack(fill="both", expand=True, padx=2, pady=2)
+
+        # 顶部拖拽条（细条，用于移动窗口）
+        drag_bar = tk.Frame(container, bg=c["border"], height=4, cursor="fleur")
+        drag_bar.pack(fill="x")
+        drag_bar.bind("<ButtonPress-1>", self._subtitle_drag_start)
+        drag_bar.bind("<B1-Motion>", self._subtitle_drag_move)
+        # 整个窗口也可拖拽
+        container.bind("<ButtonPress-1>", self._subtitle_drag_start)
+        container.bind("<B1-Motion>", self._subtitle_drag_move)
+
+        # 文本区域
+        text_frame = tk.Frame(container, bg=c["bg_panel"])
+        text_frame.pack(fill="both", expand=True, padx=16, pady=(8, 12))
+
+        self.sub_source_label = tk.Label(
+            text_frame, text="", fg=c["text_muted"], bg=c["bg_panel"],
+            font=("Microsoft YaHei", 11), anchor="w", justify="left", wraplength=900)
+        self.sub_source_label.pack(fill="x")
+
+        self.sub_target_label = tk.Label(
+            text_frame, text="等待翻译...", fg="white", bg=c["bg_panel"],
+            font=("Microsoft YaHei", 18, "bold"), anchor="w", justify="left", wraplength=900)
+        self.sub_target_label.pack(fill="x", pady=(4, 0))
+
+        # 右键菜单
+        sub_menu = tk.Menu(win, tearoff=0, bg=c["bg_panel"], fg=c["text_main"],
+                           font=("Microsoft YaHei", 9))
+        sub_menu.add_command(label="隐藏字幕窗", command=self._toggle_subtitle)
+        sub_menu.add_command(label="退出程序", command=self._on_close)
+        container.bind("<Button-3>", lambda e: sub_menu.post(e.x_root, e.y_root))
+        text_frame.bind("<Button-3>", lambda e: sub_menu.post(e.x_root, e.y_root))
+        self.sub_source_label.bind("<Button-3>", lambda e: sub_menu.post(e.x_root, e.y_root))
+        self.sub_target_label.bind("<Button-3>", lambda e: sub_menu.post(e.x_root, e.y_root))
+
+        # 默认位置：屏幕底部居中
+        sw = win.winfo_screenwidth()
+        sh = win.winfo_screenheight()
+        ww, wh = 960, 100
+        win.geometry(f"{ww}x{wh}+{(sw-ww)//2}+{sh-wh-40}")
+
+        self._subtitle_win = win
+        self._subtitle_drag_x = 0
+        self._subtitle_drag_y = 0
+
+        # 如果主窗口关闭，一并关掉字幕窗
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _subtitle_drag_start(self, event):
+        self._subtitle_drag_x = event.x
+        self._subtitle_drag_y = event.y
+
+    def _subtitle_drag_move(self, event):
+        dx = event.x - self._subtitle_drag_x
+        dy = event.y - self._subtitle_drag_y
+        x = self._subtitle_win.winfo_x() + dx
+        y = self._subtitle_win.winfo_y() + dy
+        self._subtitle_win.geometry(f"+{x}+{y}")
+
+    def _update_subtitle(self, source, target, timestamp):
+        """更新字幕悬浮窗的内容"""
+        if not self._subtitle_win or not self._subtitle_on:
+            return
+        try:
+            self.sub_source_label.configure(text=f"{timestamp}  {source}")
+            self.sub_target_label.configure(text=target)
+        except tk.TclError:
+            pass  # 窗口已被销毁
+
+    def _toggle_subtitle(self):
+        if self._subtitle_on:
+            self._subtitle_win.withdraw()
+            self._subtitle_on = False
+            self.btn_subtitle.configure(text="💬 字幕: 关", bg="#334155")
+        else:
+            self._subtitle_win.deiconify()
+            self._subtitle_on = True
+            self.btn_subtitle.configure(text="💬 字幕: 开", bg=self.colors["accent_deep"])
+
+    # ═══════════════════════════════════════════════════════
+    # UI 操作
+    # ═══════════════════════════════════════════════════════
     def _browse_file(self):
         path = filedialog.askopenfilename(
             title="请选择要同传的媒体文件",
@@ -910,26 +1007,6 @@ class SMTBetaUI:
         self.out_text.delete("1.0", "end")
         self.out_text.configure(state="disabled")
 
-    def _toggle_mini(self):
-        if self._mini_mode:
-            self._exit_mini_mode()
-        else:
-            self._enter_mini_mode()
-
-    def _enter_mini_mode(self):
-        self._saved_geo = self.root.geometry()
-        self.root.geometry("1200x240")
-        self.root.attributes("-topmost", True)
-        self._mini_mode = True
-        self.btn_mini.configure(text="📋 还原")
-
-    def _exit_mini_mode(self):
-        if self._saved_geo:
-            self.root.geometry(self._saved_geo)
-        self.root.attributes("-topmost", False)
-        self._mini_mode = False
-        self.btn_mini.configure(text="📋 迷你")
-
     def _update_buttons(self, state):
         if state == "idle":
             self.btn_start.pack(side="left", padx=(0, 6))
@@ -949,9 +1026,14 @@ class SMTBetaUI:
 
     def _on_close(self):
         self.engine.stop_listening()
+        if self._subtitle_win:
+            try: self._subtitle_win.destroy()
+            except: pass
         self.root.destroy()
 
-    # ── 消息轮询（从引擎队列取消息更新 UI） ──
+    # ═══════════════════════════════════════════════════════
+    # 消息轮询
+    # ═══════════════════════════════════════════════════════
     def _poll_messages(self):
         try:
             while True:
@@ -959,20 +1041,18 @@ class SMTBetaUI:
                 self._handle_message(msg)
         except queue.Empty:
             pass
-        # 每 100ms 轮询一次
         self.root.after(100, self._poll_messages)
 
     def _handle_message(self, msg):
         msg_type = msg.get("type", "")
         if msg_type == "translation":
-            self._append_translation(
-                msg.get("source", ""),
-                msg.get("target", ""),
-                msg.get("timestamp", "")
-            )
+            source = msg.get("source", "")
+            target = msg.get("target", "")
+            timestamp = msg.get("timestamp", "")
+            self._append_translation(source, target, timestamp)
+            self._update_subtitle(source, target, timestamp)
         elif msg_type == "log":
             self._append_log(msg.get("content", ""))
-            # 根据日志内容更新状态栏
             content = msg.get("content", "")
             if "已切断" in content or "已停止" in content:
                 self.root.after(0, lambda: self._update_buttons("idle"))
