@@ -1,0 +1,22 @@
+# 1. 忽略 Python 运行缓存
+__pycache__/
+*.pyc
+
+# 2. 忽略日志和同传导出文件夹 (但保留空文件夹结构，防止报错)
+log/*
+!log/.gitkeep
+Lagistory/*
+!Lagistory/.gitkeep
+exports_beta/*
+!exports_beta/.gitkeep
+
+# 3. 忽略本地配置文件 (极其重要！防止你的 API Key 泄露)
+config.json
+
+# 4. 忽略可能下载或生成的音视频大文件
+*.mp4
+*.mkv
+*.ts
+*.mp3
+*.wav
+*.flac

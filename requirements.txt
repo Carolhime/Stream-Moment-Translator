@@ -1,0 +1,4 @@
+numpy
+openai
+faster-whisper
+yt-dlp

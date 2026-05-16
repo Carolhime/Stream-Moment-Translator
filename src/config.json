@@ -1,0 +1,12 @@
+{
+    "api_key": "",
+    "api_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "llm_model_name": "qwen3.5-plus",
+    "proxy_url": "http://127.0.0.1:7897",
+    "whisper_model_size": "large-v3",
+    "whisper_device": "cuda",
+    "whisper_compute_type": "float16",
+    "stream_context": "",
+    "target_lang": "中文 (Chinese)",
+    "cookies_path": ""
+}
